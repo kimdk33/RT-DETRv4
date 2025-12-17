@@ -166,7 +166,12 @@ def process_video(
 
 def main():
     parser = argparse.ArgumentParser(description="Run inference with an OpenVINO RT-DETR model.")
-    parser.add_argument("--model", type=str, required=True, help="Path to the OpenVINO model XML/IR file.")
+    parser.add_argument(
+        "--model",
+        type=str,
+        required=True,
+        help="Path to the OpenVINO IR (.xml) converted from the exported ONNX model.",
+    )
     parser.add_argument("--input", type=str, required=True, help="Path to the input image or video file.")
     parser.add_argument("--device", type=str, default="CPU", help="Target device for inference (e.g., CPU or GPU).")
     parser.add_argument("--threshold", type=float, default=0.4, help="Score threshold for visualizing detections.")
