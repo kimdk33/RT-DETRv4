@@ -159,6 +159,7 @@ def process_video(
     threshold: float = 0.4,
     output_path: str = "openvino_result.mp4",
     input_size: int = DEFAULT_INPUT_SIZE,
+    batch_size: int = 1,
 ):
     cap = cv2.VideoCapture(video_path)
 
@@ -173,29 +174,53 @@ def process_video(
     print("Processing video frames...")
     transforms = T.Compose([T.ToTensor()])
 
+    def process_batch(frames: List[np.ndarray], start_index: int) -> int:
+        pil_images: List[Image.Image] = []
+        tensors: List[np.ndarray] = []
+        orig_sizes: List[np.ndarray] = []
+        ratios: List[float] = []
+        paddings: List[Tuple[int, int]] = []
+
+        for frame in frames:
+            frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            resized_frame, ratio, pad_w, pad_h = resize_with_aspect_ratio(frame_pil, input_size)
+            orig_size = np.array([resized_frame.size[1], resized_frame.size[0]], dtype=np.int64)
+
+            tensors.append(transforms(resized_frame).numpy())
+            orig_sizes.append(orig_size)
+            ratios.append(ratio)
+            paddings.append((pad_w, pad_h))
+            pil_images.append(frame_pil)
+
+        im_batch = np.stack(tensors, axis=0)
+        orig_sizes_batch = np.stack(orig_sizes, axis=0)
+        labels, boxes, scores = infer_model(compiled_model, im_batch, orig_sizes_batch)
+
+        result_images = draw(pil_images, labels, boxes, scores, ratios, paddings, threshold)
+        for result_img in result_images:
+            frame_out = cv2.cvtColor(np.array(result_img), cv2.COLOR_RGB2BGR)
+            out.write(frame_out)
+
+        processed = len(frames)
+        total_processed = start_index + processed
+        if total_processed % 10 == 0:
+            print(f"Processed {total_processed} frames...")
+        return processed
+
+    buffer: List[np.ndarray] = []
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
-        frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        resized_frame, ratio, pad_w, pad_h = resize_with_aspect_ratio(frame_pil, input_size)
-        orig_size = np.array([[resized_frame.size[1], resized_frame.size[0]]], dtype=np.int64)
+        buffer.append(frame)
+        if len(buffer) == batch_size:
+            frame_count += process_batch(buffer, frame_count)
+            buffer = []
 
-        im_data = transforms(resized_frame).unsqueeze(0).numpy()
-        labels, boxes, scores = infer_model(compiled_model, im_data, orig_size)
-
-        result_images = draw(
-            [frame_pil], labels, boxes, scores, [ratio], [(pad_w, pad_h)], threshold
-        )
-        frame_with_detections = result_images[0]
-
-        frame_out = cv2.cvtColor(np.array(frame_with_detections), cv2.COLOR_RGB2BGR)
-        out.write(frame_out)
-        frame_count += 1
-
-        if frame_count % 10 == 0:
-            print(f"Processed {frame_count} frames...")
+    if buffer:
+        frame_count += process_batch(buffer, frame_count)
 
     cap.release()
     out.release()
@@ -220,7 +245,7 @@ def main():
         "--batch-size",
         type=int,
         default=1,
-        help="Batch size for image inputs. Ignored for video inputs.",
+        help="Batch size for image inputs or the number of frames to infer together for video inputs.",
     )
     parser.add_argument(
         "--output-dir",
@@ -258,9 +283,13 @@ def main():
             raise FileNotFoundError(f"Input path '{args.input}' does not exist.")
 
         if is_video_file(input_path):
-            if args.batch_size != 1:
-                print("Batch size is fixed to 1 for video inputs; ignoring --batch-size.")
-            process_video(compiled_model, str(input_path), args.threshold, input_size=args.input_size)
+            process_video(
+                compiled_model,
+                str(input_path),
+                args.threshold,
+                input_size=args.input_size,
+                batch_size=args.batch_size,
+            )
             return
 
         if input_path.is_dir():

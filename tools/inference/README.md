@@ -50,9 +50,9 @@ python tools/inference/openvino_inf.py \
   --input-size 640
 ```
 
-* Use any image or video file for `--input`. Images produce a saved JPEG with drawn boxes; videos produce an MP4 file with per-frame detections.
+* Use any image or video file for `--input`. Images produce a saved JPEG with drawn boxes; videos produce an MP4 file with detections drawn on each processed frame.
 * Choose `--device GPU` (or another supported device) if OpenVINO is set up for it.
-* 이미지 배치 추론이 필요하면 `--input`에 이미지 디렉터리나 콤마로 구분한 여러 이미지 경로를 주고, `--batch-size`로 한 번에 처리할 묶음 크기를 지정하세요. 결과는 `--output-dir`(기본 `openvino_results/`) 아래에 `<원본이름>_det.jpg`로 저장됩니다.
+* 이미지/동영상 모두 `--batch-size`로 묶음 크기를 지정할 수 있습니다. 이미지의 경우 `--input`에 이미지 디렉터리나 콤마로 구분한 여러 경로를 넣어 배치 단위로 처리하며, 결과는 `--output-dir`(기본 `openvino_results/`) 아래에 `<원본이름>_det.jpg`로 저장됩니다. 동영상의 경우 연속된 프레임을 배치 단위로 묶어 한 번의 추론으로 처리합니다.
 
 예) 이미지 4장을 배치 2로 추론
 
