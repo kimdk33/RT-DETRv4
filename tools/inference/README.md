@@ -15,27 +15,26 @@ The export produces `model.onnx` (or `<ckpt>.onnx` when `--resume` is given). Th
 
 ## 2. Convert ONNX to OpenVINO IR
 
-Install OpenVINO and use the Model Optimizer CLI (`ovc`, formerly `mo`) to create an IR package:
+Install OpenVINO and use the Model Optimizer CLI (`ovc`, formerly `mo`) to create an IR package. The examples below follow the [OpenVINO conversion parameter guide](https://docs.openvino.ai/2025/openvino-workflow/model-preparation/conversion-parameters.html):
 
 ```bash
 ovc --input_model model.onnx \
   --output_dir openvino_ir \
-  --input_shape "[1,3,640,640]" \
-  --data_type FP16
+  --input "images[1,3,640,640],orig_target_sizes[1,2]" \
+  --compress_to_fp16
 ```
 
 This command generates `openvino_ir/model.xml` and `openvino_ir/model.bin`. The `.xml` path is what `openvino_inf.py` consumes via `--model`.
 
 ### Dynamic batch sizes
 
-If you need variable batches (for example, to feed multiple images at once), convert with a dynamic batch dimension and let the
-script reshape the model at load time:
+If you need variable batches (for example, to feed multiple images at once), convert with a dynamic batch dimension and let the script reshape the model at load time:
 
 ```bash
 ovc --input_model model.onnx \
   --output_dir openvino_ir \
-  --input_shape "[?,3,640,640]" \
-  --data_type FP16
+  --input "images[?,3,640,640],orig_target_sizes[?,2]" \
+  --compress_to_fp16
 ```
 
 The inference script relaxes the batch axis to `-1` before compilation, so IR files built this way can run with any batch size.
