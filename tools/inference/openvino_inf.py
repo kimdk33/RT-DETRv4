@@ -279,6 +279,23 @@ def main():
                 f"of {static_batch}, so --batch-size must be set to {static_batch}. "
                 "Reconvert the model with dynamic input shapes to run with other batch sizes."
             )
+
+    # Some IRs keep static batch dimensions baked into output shapes (e.g., reshape constants),
+    # which makes runtime batching incompatible even when inputs are dynamic.
+    output_batches = {int(out.partial_shape[0]) for out in model.outputs if not out.partial_shape[0].is_dynamic}
+    if output_batches:
+        if len(output_batches) > 1:
+            raise ValueError(
+                "Model outputs have inconsistent static batch dimensions: "
+                f"{sorted(output_batches)}. Please re-export/convert the model with consistent shapes."
+            )
+        output_batch = output_batches.pop()
+        if args.batch_size != output_batch:
+            raise ValueError(
+                "This IR was converted with static output batch dimensions, so --batch-size must be "
+                f"{output_batch}. Reconvert with dynamic batch axes (e.g., images[?,3,...],orig_target_sizes[?,2]) "
+                "to run other batch sizes."
+            )
     compiled_model = core.compile_model(model=model, device_name=args.device)
 
     # Accept a comma-separated list of image files, a single image, or a directory of images.

@@ -42,6 +42,8 @@ ONNX 내 입력 축 이름이 `images`와 `orig_target_sizes`로 유지되고, �
 
 > **Static IR?** If you converted with a fixed batch (e.g., `images[1,3,640,640]`), `--batch-size` must match that value. 다른 배치 크기를 사용하려면 `--input "images[?,3,640,640],orig_target_sizes[?,2]"`와 같이 동적 배치로 다시 변환하세요.
 
+> **Static outputs?** 일부 IR은 내부 `reshape` 등으로 출력 배치를 1로 고정합니다. `openvino_inf.py`는 이런 IR에 대해 `--batch-size`가 1이 아니면 즉시 에러로 안내하므로, 여러 프레임/이미지를 한 번에 처리하려면 `ovc --input "images[?,3,...],orig_target_sizes[?,2]"`와 같이 배치 축을 열어 다시 변환해야 합니다.
+
 ## 3. Run inference (image or video)
 
 ```bash
