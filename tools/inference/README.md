@@ -40,6 +40,8 @@ ovc model.onnx \
 The inference script relaxes the batch axis to `-1` before compilation, so IR files built this way can run with any batch size.
 ONNX 내 입력 축 이름이 `images`와 `orig_target_sizes`로 유지되고, 두 축 모두 batch 축이 열려 있어야 하므로 `export_onnx.py` 기본 설정을 그대로 사용하세요.
 
+> **Static IR?** If you converted with a fixed batch (e.g., `images[1,3,640,640]`), `--batch-size` must match that value. 다른 배치 크기를 사용하려면 `--input "images[?,3,640,640],orig_target_sizes[?,2]"`와 같이 동적 배치로 다시 변환하세요.
+
 ## 3. Run inference (image or video)
 
 ```bash

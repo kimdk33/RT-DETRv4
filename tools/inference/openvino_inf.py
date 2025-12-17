@@ -183,8 +183,9 @@ def process_video(
 
         for frame in frames:
             frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            orig_frame_h, orig_frame_w = frame.shape[:2]
             resized_frame, ratio, pad_w, pad_h = resize_with_aspect_ratio(frame_pil, input_size)
-            orig_size = np.array([resized_frame.size[1], resized_frame.size[0]], dtype=np.int64)
+            orig_size = np.array([orig_frame_h, orig_frame_w], dtype=np.int64)
 
             tensors.append(transforms(resized_frame).numpy())
             orig_sizes.append(orig_size)
@@ -257,15 +258,27 @@ def main():
 
     core = Core()
     model = core.read_model(args.model)
-    # Enable dynamic batch sizes by relaxing the batch dimension to -1 (any)
-    images_name = model.inputs[0].get_any_name()
-    orig_sizes_name = model.inputs[1].get_any_name()
-    model.reshape(
-        {
-            images_name: PartialShape([-1, 3, args.input_size, args.input_size]),
-            orig_sizes_name: PartialShape([-1, 2]),
-        }
-    )
+
+    images_input = model.inputs[0]
+    orig_sizes_input = model.inputs[1]
+    batch_dim = images_input.partial_shape[0]
+
+    if batch_dim.is_dynamic:
+        # Enable dynamic batch sizes by relaxing the batch dimension to -1 (any)
+        model.reshape(
+            {
+                images_input.get_any_name(): PartialShape([-1, 3, args.input_size, args.input_size]),
+                orig_sizes_input.get_any_name(): PartialShape([-1, 2]),
+            }
+        )
+    else:
+        static_batch = int(batch_dim)
+        if args.batch_size != static_batch:
+            raise ValueError(
+                "The loaded OpenVINO model was converted with a static batch size "
+                f"of {static_batch}, so --batch-size must be set to {static_batch}. "
+                "Reconvert the model with dynamic input shapes to run with other batch sizes."
+            )
     compiled_model = core.compile_model(model=model, device_name=args.device)
 
     # Accept a comma-separated list of image files, a single image, or a directory of images.
