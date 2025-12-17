@@ -11,7 +11,7 @@ python tools/deployment/export_onnx.py \
   --simplify --check
 ```
 
-The export produces `model.onnx` (or `<ckpt>.onnx` when `--resume` is given). The OpenVINO script expects models with the two inputs `images` and `orig_target_sizes` and three outputs `labels`, `boxes`, and `scores` produced by this exporter.
+The export produces `model.onnx` (or `<ckpt>.onnx` when `--resume` is given). The OpenVINO script expects models with the two inputs `images` and `orig_target_sizes` and three outputs `labels`, `boxes`, and `scores` produced by this exporter. **배치 차원은 기본적으로 `dynamic_axes`로 열려 있으니 유동 배치를 위해 별도 옵션을 줄 필요가 없습니다.**
 
 ## 2. Convert ONNX to OpenVINO IR
 
@@ -39,6 +39,7 @@ mo --input_model model.onnx \
 ```
 
 The inference script relaxes the batch axis to `-1` before compilation, so IR files built this way can run with any batch size.
+ONNX 내 입력 축 이름이 `images`와 `orig_target_sizes`로 유지되고, 두 축 모두 batch 축이 열려 있어야 하므로 `export_onnx.py` 기본 설정을 그대로 사용하세요.
 
 ## 3. Run inference (image or video)
 
