@@ -51,8 +51,9 @@ def main(args, ):
 
     model = Model()
 
-    data = torch.rand(32, 3, 640, 640)
-    size = torch.tensor([[640, 640]])
+    batch_size = 1
+    data = torch.rand(batch_size, 3, 640, 640)
+    size = torch.full((batch_size, 2), 640)
     _ = model(data, size)
 
     dynamic_axes = {
