@@ -5,7 +5,8 @@ Copyright (c) 2024 The D-FINE Authors. All Rights Reserved.
 from __future__ import annotations
 
 import argparse
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import Dict, Iterable, List, Tuple
 
 import cv2
 import numpy as np
@@ -30,6 +31,22 @@ def resize_with_aspect_ratio(image: Image.Image, size: int, interpolation=Image.
     pad_h = (size - new_height) // 2
     padded.paste(resized, (pad_w, pad_h))
     return padded, ratio, pad_w, pad_h
+
+
+def is_video_file(path: Path) -> bool:
+    return path.suffix.lower() in {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv"}
+
+
+def chunked(iterable: Iterable[str], batch_size: int) -> Iterable[List[str]]:
+    """Yield successive batches from an iterable."""
+    batch: List[str] = []
+    for item in iterable:
+        batch.append(item)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 def draw(
@@ -94,25 +111,46 @@ def infer_model(
 
 def process_image(
     compiled_model,
-    file_path: str,
+    file_paths: List[str],
     threshold: float = 0.4,
-    output_path: str = "openvino_result.jpg",
+    output_dir: str = "openvino_results",
     input_size: int = DEFAULT_INPUT_SIZE,
+    batch_size: int = 1,
 ):
-    im_pil = Image.open(file_path).convert("RGB")
-    resized_im, ratio, pad_w, pad_h = resize_with_aspect_ratio(im_pil, input_size)
-    orig_size = np.array([[resized_im.size[1], resized_im.size[0]]], dtype=np.int64)
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
 
     transforms = T.Compose([T.ToTensor()])
-    im_data = transforms(resized_im).unsqueeze(0).numpy()
 
-    labels, boxes, scores = infer_model(compiled_model, im_data, orig_size)
+    for batch in chunked(file_paths, batch_size):
+        pil_images: List[Image.Image] = []
+        tensors: List[np.ndarray] = []
+        orig_sizes: List[np.ndarray] = []
+        ratios: List[float] = []
+        paddings: List[Tuple[int, int]] = []
 
-    result_images = draw(
-        [im_pil], labels, boxes, scores, [ratio], [(pad_w, pad_h)], threshold
-    )
-    result_images[0].save(output_path)
-    print(f"Image processing complete. Result saved as '{output_path}'.")
+        for file_path in batch:
+            im_pil = Image.open(file_path).convert("RGB")
+            resized_im, ratio, pad_w, pad_h = resize_with_aspect_ratio(im_pil, input_size)
+            orig_size = np.array([resized_im.size[1], resized_im.size[0]], dtype=np.int64)
+
+            tensors.append(transforms(resized_im).numpy())
+            orig_sizes.append(orig_size)
+            ratios.append(ratio)
+            paddings.append((pad_w, pad_h))
+            pil_images.append(im_pil)
+
+        im_batch = np.stack(tensors, axis=0)
+        orig_sizes_batch = np.stack(orig_sizes, axis=0)
+        labels, boxes, scores = infer_model(compiled_model, im_batch, orig_sizes_batch)
+
+        result_images = draw(pil_images, labels, boxes, scores, ratios, paddings, threshold)
+
+        for img_path, result_img in zip(batch, result_images):
+            stem = Path(img_path).stem
+            save_path = output_root / f"{stem}_det.jpg"
+            result_img.save(save_path)
+            print(f"Saved result for '{img_path}' -> '{save_path}'.")
 
 
 def process_video(
@@ -178,6 +216,18 @@ def main():
     parser.add_argument(
         "--input-size", type=int, default=DEFAULT_INPUT_SIZE, help="Square input size used during preprocessing."
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=1,
+        help="Batch size for image inputs. Ignored for video inputs.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="openvino_results",
+        help="Directory to store visualization outputs for image batches.",
+    )
     args = parser.parse_args()
 
     core = Core()
@@ -193,12 +243,44 @@ def main():
     )
     compiled_model = core.compile_model(model=model, device_name=args.device)
 
-    try:
-        im_pil = Image.open(args.input).convert("RGB")
-        im_pil.close()
-        process_image(compiled_model, args.input, args.threshold, input_size=args.input_size)
-    except (IOError, SyntaxError):
-        process_video(compiled_model, args.input, args.threshold, input_size=args.input_size)
+    # Accept a comma-separated list of image files, a single image, or a directory of images.
+    if "," in args.input:
+        image_paths = [path.strip() for path in args.input.split(",") if path.strip()]
+        for path_str in image_paths:
+            path = Path(path_str)
+            if not path.exists():
+                raise FileNotFoundError(f"Input file '{path_str}' does not exist.")
+            if is_video_file(path):
+                raise ValueError("Video inputs cannot be combined in a comma-separated image list.")
+    else:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            raise FileNotFoundError(f"Input path '{args.input}' does not exist.")
+
+        if is_video_file(input_path):
+            if args.batch_size != 1:
+                print("Batch size is fixed to 1 for video inputs; ignoring --batch-size.")
+            process_video(compiled_model, str(input_path), args.threshold, input_size=args.input_size)
+            return
+
+        if input_path.is_dir():
+            image_paths = sorted(
+                [str(p) for p in input_path.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}]
+            )
+        else:
+            image_paths = [str(input_path)]
+
+    if not image_paths:
+        raise ValueError("No image files found for inference.")
+
+    process_image(
+        compiled_model,
+        image_paths,
+        args.threshold,
+        output_dir=args.output_dir,
+        input_size=args.input_size,
+        batch_size=args.batch_size,
+    )
 
 
 if __name__ == "__main__":

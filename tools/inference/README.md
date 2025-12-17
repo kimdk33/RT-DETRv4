@@ -52,5 +52,17 @@ python tools/inference/openvino_inf.py \
 
 * Use any image or video file for `--input`. Images produce a saved JPEG with drawn boxes; videos produce an MP4 file with per-frame detections.
 * Choose `--device GPU` (or another supported device) if OpenVINO is set up for it.
+* 이미지 배치 추론이 필요하면 `--input`에 이미지 디렉터리나 콤마로 구분한 여러 이미지 경로를 주고, `--batch-size`로 한 번에 처리할 묶음 크기를 지정하세요. 결과는 `--output-dir`(기본 `openvino_results/`) 아래에 `<원본이름>_det.jpg`로 저장됩니다.
+
+예) 이미지 4장을 배치 2로 추론
+
+```bash
+python tools/inference/openvino_inf.py \
+  --model openvino_ir/model.xml \
+  --input "img1.jpg,img2.jpg,img3.jpg,img4.jpg" \
+  --batch-size 2 \
+  --input-size 640 \
+  --threshold 0.4
+```
 
 > **Do I need a separate ONNX conversion?** Yes. Export your checkpoint to ONNX first (step 1), then convert that ONNX file to OpenVINO IR with MO (step 2). The inference script only accepts the IR format.
