@@ -51,6 +51,8 @@ def main(args, ):
 
     model = Model()
 
+    # A dummy batch of 1 is used for tracing, but the batch axis is opened via
+    # dynamic_axes below so the exported ONNX keeps a flexible batch dimension.
     batch_size = 1
     data = torch.rand(batch_size, 3, 640, 640)
     size = torch.full((batch_size, 2), 640)
@@ -84,10 +86,12 @@ def main(args, ):
     if args.simplify:
         import onnx
         import onnxsim
-        dynamic = True
-        # input_shapes = {'images': [1, 3, 640, 640], 'orig_target_sizes': [1, 2]} if dynamic else None
-        input_shapes = {'images': data.shape, 'orig_target_sizes': size.shape} if dynamic else None
-        onnx_model_simplify, check = onnxsim.simplify(output_file, test_input_shapes=input_shapes)
+        # Keep dynamic axes during simplification to avoid re-freezing the batch
+        # dimension when running onnxsim.
+        onnx_model_simplify, check = onnxsim.simplify(
+            output_file,
+            dynamic_input_shape=True,
+        )
         onnx.save(onnx_model_simplify, output_file)
         print(f'Simplify onnx model {check}...')
 

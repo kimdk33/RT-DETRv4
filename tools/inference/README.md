@@ -11,7 +11,7 @@ python tools/deployment/export_onnx.py \
   --simplify --check
 ```
 
-The export produces `model.onnx` (or `<ckpt>.onnx` when `--resume` is given). The OpenVINO script expects models with the two inputs `images` and `orig_target_sizes` and three outputs `labels`, `boxes`, and `scores` produced by this exporter. **배치 차원은 기본적으로 `dynamic_axes`로 열려 있으니 유동 배치를 위해 별도 옵션을 줄 필요가 없습니다.**
+The export produces `model.onnx` (or `<ckpt>.onnx` when `--resume` is given). A dummy batch of 1 is only used for tracing; the exporter sets `dynamic_axes` on the batch dim for `images` and `orig_target_sizes`, so the ONNX keeps a flexible batch axis. **배치 차원은 기본적으로 `dynamic_axes`로 열려 있으니 유동 배치를 위해 별도 옵션을 줄 필요가 없습니다.** Simplification also preserves dynamic axes (the script calls `onnxsim.simplify(..., dynamic_input_shape=True)`), so the batch axis will not be re-frozen when producing a smaller ONNX.
 
 ## 2. Convert ONNX to OpenVINO IR
 
