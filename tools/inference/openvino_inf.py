@@ -284,6 +284,9 @@ def main():
     orig_sizes_input = model.inputs[1]
     batch_dim = images_input.partial_shape[0]
 
+    static_input_batch = None
+    static_output_batch = None
+
     if batch_dim.is_dynamic:
         # Enable dynamic batch sizes by relaxing the batch dimension to -1 (any)
         model.reshape(
@@ -293,13 +296,7 @@ def main():
             }
         )
     else:
-        static_batch = get_static_dim_value(batch_dim)
-        if args.batch_size != static_batch:
-            raise ValueError(
-                "The loaded OpenVINO model was converted with a static batch size "
-                f"of {static_batch}, so --batch-size must be set to {static_batch}. "
-                "Reconvert the model with dynamic input shapes to run with other batch sizes."
-            )
+        static_input_batch = get_static_dim_value(batch_dim)
 
     # Some IRs keep static batch dimensions baked into output shapes (e.g., reshape constants),
     # which makes runtime batching incompatible even when inputs are dynamic.
@@ -314,13 +311,38 @@ def main():
                 "Model outputs have inconsistent static batch dimensions: "
                 f"{sorted(output_batches)}. Please re-export/convert the model with consistent shapes."
             )
-        output_batch = output_batches.pop()
-        if args.batch_size != output_batch:
+        static_output_batch = output_batches.pop()
+
+    if static_input_batch is not None and static_output_batch is not None:
+        if static_input_batch != static_output_batch:
             raise ValueError(
-                "This IR was converted with static output batch dimensions, so --batch-size must be "
-                f"{output_batch}. Reconvert with dynamic batch axes (e.g., images[?,3,...],orig_target_sizes[?,2]) "
-                "to run other batch sizes."
+                "Model inputs and outputs disagree on the static batch dimension "
+                f"({static_input_batch} vs {static_output_batch}). "
+                "Please re-export/re-convert the model with consistent batch axes."
             )
+
+    effective_batch = args.batch_size
+
+    if static_input_batch is not None and effective_batch != static_input_batch:
+        print(
+            "[INFO] Requested --batch-size does not match the static input batch of the IR. "
+            f"Falling back to batch {static_input_batch}. Use ovc with dynamic inputs "
+            "(e.g., images[?,3,640,640],orig_target_sizes[?,2]) to enable other batch sizes."
+        )
+        effective_batch = static_input_batch
+
+    if static_output_batch is not None and effective_batch != static_output_batch:
+        print(
+            "[INFO] Model outputs are fixed to batch size "
+            f"{static_output_batch}; running with that batch size instead of the requested "
+            f"{args.batch_size}. Reconvert with dynamic batch axes to batch multiple frames together."
+        )
+        effective_batch = static_output_batch
+
+    if effective_batch <= 0:
+        raise ValueError("Resolved batch size must be positive.")
+
+    args.batch_size = effective_batch
     compiled_model = core.compile_model(model=model, device_name=args.device)
 
     # Accept a comma-separated list of image files, a single image, or a directory of images.
