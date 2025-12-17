@@ -15,12 +15,12 @@ The export produces `model.onnx` (or `<ckpt>.onnx` when `--resume` is given). Th
 
 ## 2. Convert ONNX to OpenVINO IR
 
-Install OpenVINO and use the Model Optimizer CLI (`ovc`, formerly `mo`) to create an IR package. The examples below follow the [OpenVINO conversion parameter guide](https://docs.openvino.ai/2025/openvino-workflow/model-preparation/conversion-parameters.html) syntax for `--input` shapes, using the `name[dim]` form shown there:
+Install OpenVINO and use the Model Optimizer CLI (`ovc`, formerly `mo`) to create an IR package. The examples below follow the [OpenVINO conversion parameter guide](https://docs.openvino.ai/2025/openvino-workflow/model-preparation/conversion-parameters.html) syntax for `--input` shapes, using the comma-separated `name[dim]` form shown in `ovc -h`:
 
 ```bash
 ovc --input_model model.onnx \
   --output_dir openvino_ir \
-  --input images[1,3,640,640] orig_target_sizes[1,2] \
+  --input "images[1,3,640,640],orig_target_sizes[1,2]" \
   --compress_to_fp16
 ```
 
@@ -33,7 +33,7 @@ If you need variable batches (for example, to feed multiple images at once), con
 ```bash
 ovc --input_model model.onnx \
   --output_dir openvino_ir \
-  --input images[?,3,640,640] orig_target_sizes[?,2] \
+  --input "images[?,3,640,640],orig_target_sizes[?,2]" \
   --compress_to_fp16
 ```
 
