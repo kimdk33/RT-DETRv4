@@ -49,6 +49,27 @@ def chunked(iterable: Iterable[str], batch_size: int) -> Iterable[List[str]]:
         yield batch
 
 
+def get_static_dim_value(dim) -> int:
+    """Return the integer value of a static OpenVINO Dimension.
+
+    Falls back to min/max length if direct length access is unavailable.
+    """
+
+    if dim.is_dynamic:
+        raise ValueError("Dimension is dynamic; no static value available.")
+
+    if hasattr(dim, "get_length"):
+        return dim.get_length()
+
+    min_len = dim.get_min_length() if hasattr(dim, "get_min_length") else None
+    max_len = dim.get_max_length() if hasattr(dim, "get_max_length") else None
+    if min_len is not None and max_len is not None and min_len == max_len:
+        return min_len
+
+    # Fallback for Dimension objects convertible to int
+    return int(dim)
+
+
 def draw(
     images: List[Image.Image],
     labels: np.ndarray,
@@ -272,7 +293,7 @@ def main():
             }
         )
     else:
-        static_batch = int(batch_dim)
+        static_batch = get_static_dim_value(batch_dim)
         if args.batch_size != static_batch:
             raise ValueError(
                 "The loaded OpenVINO model was converted with a static batch size "
@@ -282,7 +303,11 @@ def main():
 
     # Some IRs keep static batch dimensions baked into output shapes (e.g., reshape constants),
     # which makes runtime batching incompatible even when inputs are dynamic.
-    output_batches = {int(out.partial_shape[0]) for out in model.outputs if not out.partial_shape[0].is_dynamic}
+    output_batches = {
+        get_static_dim_value(out.partial_shape[0])
+        for out in model.outputs
+        if not out.partial_shape[0].is_dynamic
+    }
     if output_batches:
         if len(output_batches) > 1:
             raise ValueError(
